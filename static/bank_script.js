@@ -39,6 +39,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let isSubmitting = false;
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     const recognition = SpeechRecognition ? new SpeechRecognition() : null;
+    let isListening = false;
 
     if (recognition) {
         recognition.continuous = false;
@@ -68,7 +69,7 @@ document.addEventListener('DOMContentLoaded', () => {
         initialDeposit: { required: true, min: 0 },
         accountPurpose: { required: true, maxLength: 255 },
         modeOfOperation: { required: true, maxLength: 255 },
-        nomineeName: { required: true, maxLength: 255 }, // Nominee fields are required
+          nomineeName: { required: true, maxLength: 255 }, // Nominee fields are required
         nomineeRelationship: { required: true, maxLength: 255 },
         nomineeContact: { required: true, maxLength: 255 },
     };
@@ -126,7 +127,25 @@ document.addEventListener('DOMContentLoaded', () => {
     function clearForm() {
         form.reset();
     }
+   
+    function clearInput(inputId) {
+            const input = document.getElementById(inputId);
+            if (input) {
+                if(input.type === "checkbox" || input.type === "radio") {
+                    input.checked = false;
+                  }else{
+                      input.value = '';
+                  }
+                  const voiceStatusText = document.getElementById(`voiceStatusText${inputId.charAt(0).toUpperCase() + inputId.slice(1)}`);
+                      if (voiceStatusText) {
+                          voiceStatusText.textContent = '';
+                        }
+                  const errorElement = input?.closest('.form-item')?.querySelector('.form-message');
+                 if(errorElement)
+                     errorElement.textContent ='';
 
+            }
+    }
     // Capitalize the first letter of each word
     function capitalizeWords(text) {
         return text
@@ -147,7 +166,15 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         return email.toLowerCase();
     }
-
+     // Function to update voice status messages
+    function updateVoiceStatus(elementId, message) {
+            const statusTextElement = document.getElementById(`voiceStatusText${elementId.charAt(0).toUpperCase() + elementId.slice(1)}`);
+            if (statusTextElement) {
+                 statusTextElement.textContent = message;
+            statusTextElement.className = `voice-status-text ${message.toLowerCase().includes("listening") ? "listening" : message.toLowerCase().includes("mic stopped") ? "mic-stopped":  message.toLowerCase().includes("error") ? "error" : ""}`;
+             }
+    }
+    
     // Function to convert spoken words to numbers
     function convertWordsToNumber(transcript) {
         const numberWords = {
@@ -191,9 +218,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Voice input functionality
     function handleVoiceInput(inputField, micIcon) {
+         if (isListening) {
+           if (recognition) {
+                recognition.stop();
+             }
+            updateVoiceStatus(inputField.id, "Mic stopped");
+            isListening = false;
+          return;
+        }
         if (recognition) {
             micIcon.classList.add('active');
             recognition.start();
+            isListening = true;
+            updateVoiceStatus(inputField.id, "Listening...");
+
             recognition.onresult = (event) => {
                 let transcript = event.results[0][0].transcript.toLowerCase();
                 let formattedDate = null;
@@ -210,29 +248,29 @@ document.addEventListener('DOMContentLoaded', () => {
                         }
                     }
                 }
-
+                // Handle numeric fields (monthlyIncome, initialDeposit)
                 if (inputField.id === 'monthlyIncome' || inputField.id === 'initialDeposit') {
                     const numericValue = convertWordsToNumber(transcript);
                     if (!isNaN(numericValue)) {
                         inputField.value = numericValue;
                     } else {
                         showToast('Invalid number format. Please try again.', 'error');
+                         updateVoiceStatus(inputField.id, "Error: Mic stopped");
                     }
                 }
-
                 if (inputField.id === 'dob') {
                     const datePatterns = [
-                        /(\d{1,2})[\/\-\s](\d{1,2})[\/\-\s](\d{4})/,
+                         /(\d{1,2})[\/\-\s](\d{1,2})[\/\-\s](\d{4})/,
                         /(\d{4})[\/\-\s](\d{1,2})[\/\-\s](\d{1,2})/,
                         /(\d{1,2})\s+(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{4})/i,
-                        /(\d{1,2})\s+(\d{1,2})\s+(\d{4})/
-                    ];
-
+                       /(\d{1,2})\s+(\d{1,2})\s+(\d{4})/
+                     ];
+    
                     for (const pattern of datePatterns) {
                         const match = transcript.match(pattern);
                         if (match) {
                             let year, month, day;
-
+    
                             if (pattern === datePatterns[0]) {
                                 day = match[1].padStart(2, '0');
                                 month = match[2].padStart(2, '0');
@@ -250,49 +288,60 @@ document.addEventListener('DOMContentLoaded', () => {
                                 month = match[2].padStart(2, '0');
                                 year = match[3];
                             }
-                            formattedDate = `${year}-${month}-${day}`;
-                            break;
+                             formattedDate = `${year}-${month}-${day}`;
+                                break;
                         }
                     }
-
-                    if (formattedDate) {
+    
+                     if (formattedDate) {
                         inputField.value = formattedDate;
                     } else {
-                        showToast('Invalid date format. Please try again.', 'error');
-                    }
-                } else if (inputField.id === 'mobilePhone' || inputField.id === 'residentialZip') {
+                       showToast('Invalid date format. Please try again.', 'error');
+                          updateVoiceStatus(inputField.id, "Error: Mic stopped");
+                       }
+               }
+              else if (inputField.id === 'mobilePhone' || inputField.id === 'residentialZip') {
                     const digitsOnly = transcript.replace(/\D/g, '');
                     if (inputField.id === 'mobilePhone' && digitsOnly.length !== 10) {
                         showToast('Phone number must be exactly 10 digits. Please try again.', 'error');
+                        updateVoiceStatus(inputField.id, "Error: Mic stopped");
                         return;
                     }
-                    if (inputField.id === 'residentialZip' && digitsOnly.length !== 6) {
+                     if (inputField.id === 'residentialZip' && digitsOnly.length !== 6) {
                         showToast('ZIP code must be exactly 6 digits. Please try again.', 'error');
+                         updateVoiceStatus(inputField.id, "Error: Mic stopped");
                         return;
                     }
-                    inputField.value = digitsOnly;
-                } else if (inputField.id === 'email') {
+                        inputField.value = digitsOnly;
+                    }
+                else if (inputField.id === 'email') {
                     const formattedEmail = formatEmail(transcript);
                     if (formattedEmail) {
                         inputField.value = formattedEmail;
                     } else {
                         showToast('Invalid email format. Please try again.', 'error');
+                          updateVoiceStatus(inputField.id, "Error: Mic stopped");
                     }
                 } else {
                     inputField.value = capitalizeWords(transcript);
                 }
-
+                 micIcon.classList.remove('active');
+                   updateVoiceStatus(inputField.id, "");
+                   isListening = false;
+                 recognition.stop();
+            };
+            
+            recognition.onerror = (event) => {
+                 console.error('Voice recognition error:', event.error);
                 micIcon.classList.remove('active');
+                  updateVoiceStatus(inputField.id, "Error: Mic stopped");
+                isListening = false;
                 recognition.stop();
             };
-
-            recognition.onerror = () => {
-                micIcon.classList.remove('active');
-                recognition.stop();
-            };
-
+            
             recognition.onend = () => {
-                micIcon.classList.remove('active');
+               micIcon.classList.remove('active');
+               isListening = false;
             };
         }
     }
@@ -301,18 +350,31 @@ document.addEventListener('DOMContentLoaded', () => {
     micIcons.forEach((micIcon) => {
         micIcon.addEventListener('click', () => {
             const inputField = micIcon.parentElement.querySelector('.form-control');
-            handleVoiceInput(inputField, micIcon);
+             handleVoiceInput(inputField, micIcon);
+        });
+    });
+     const clearInputButtons = document.querySelectorAll('.clear-input');
+        clearInputButtons.forEach(button => {
+        button.addEventListener('click', () => {
+        const inputId = button.getAttribute('data-input');
+                clearInput(inputId);
         });
     });
 
     form.addEventListener('submit', async (e) => {
         e.preventDefault();
+          const loader = document.querySelector('.loader');
+    const loaderOverlay = document.querySelector('.loader-overlay');
+       if(loader) loader.style.display = 'block';
+     if(loaderOverlay) loaderOverlay.style.display = 'block';
         if (isSubmitting) return;
         isSubmitting = true;
         submitButton.textContent = 'Submitting...';
     
         if (!validateForm()) {
             submitButton.textContent = 'Submit Application';
+             if(loader) loader.style.display = 'none';
+            if(loaderOverlay) loaderOverlay.style.display = 'none';
             isSubmitting = false;
             return;
         }
@@ -340,6 +402,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const authData = await authResponse.json();
     
             if (!authResponse.ok || !authData.isAuthenticated) {
+                 if(loader) loader.style.display = 'none';
+            if(loaderOverlay) loaderOverlay.style.display = 'none';
                 window.location.href = '/auth/auth_form.html';
                 return;
             }
@@ -354,7 +418,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
             if (submitResponse.ok) {
                 showToast(`Your application has been submitted successfully.`, 'success');
-                clearForm();
+                 clearForm();
             } else {
                 showToast('Form submission failed. Please try again.', 'error');
             }
@@ -364,6 +428,8 @@ document.addEventListener('DOMContentLoaded', () => {
         } finally {
             submitButton.textContent = 'Submit Application';
             isSubmitting = false;
+             if(loader) loader.style.display = 'none';
+            if(loaderOverlay) loaderOverlay.style.display = 'none';
         }
     });
     
@@ -409,4 +475,91 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     checkAuth();
+});
+
+// Additional functionality from bank_script.js
+document.addEventListener('DOMContentLoaded', () => {
+    // Additional date formatting and validation for the dob field
+    const dobInput = document.getElementById('dob');
+    if (dobInput) {
+        dobInput.addEventListener('input', function(event) {
+            const value = event.target.value;
+            const regex = /^(\d{0,2})(-(\d{0,2})(-(\d{0,4}))?)?$/; // Regex for DD-MM-YYYY
+            if (!regex.test(value)) {
+                event.target.value = value.slice(0, value.length - 1);
+                return;
+            }
+            const yearPart = value.split('-')[2];
+            if (yearPart && yearPart.length > 4) {
+                event.target.value = value.slice(0, value.length - 1);
+                return;
+            }
+        });
+    }
+
+    // Additional input restrictions for mobilePhone and residentialZip
+    const mobilePhoneInput = document.getElementById('mobilePhone');
+    if (mobilePhoneInput) {
+        mobilePhoneInput.addEventListener('input', function(event) {
+            const value = event.target.value;
+            const digitsOnly = value.replace(/\D/g, '');
+            if (digitsOnly.length > 10) {
+                event.target.value = digitsOnly.slice(0, 10);
+            } else {
+                event.target.value = digitsOnly;
+            }
+        });
+    }
+
+    const residentialZipInput = document.getElementById('residentialZip');
+    if (residentialZipInput) {
+        residentialZipInput.addEventListener('input', function(event) {
+            const value = event.target.value;
+            const digitsOnly = value.replace(/\D/g, '');
+            if (digitsOnly.length > 6) {
+                event.target.value = digitsOnly.slice(0, 6);
+            } else {
+                event.target.value = digitsOnly;
+            }
+        });
+    }
+
+    // Text-only input restrictions for specified fields
+    function restrictToText(inputElement) {
+        inputElement.addEventListener('input', function(event) {
+            const value = event.target.value;
+            const textOnly = value.replace(/[^A-Za-z\s]/g, '');
+            event.target.value = textOnly;
+        });
+    }
+
+    const textOnlyFields = [
+        'firstName', 'middleName', 'lastName', 'gender', 'maritalStatus', 'nationality',
+        'mothersMaidenName', 'residentialCity', 'residentialState', 'employmentStatus',
+        'occupation', 'incomeSource', 'accountType', 'accountPurpose',
+        'modeOfOperation', 'nomineeName', 'nomineeRelationship'
+    ];
+
+    textOnlyFields.forEach(id => {
+        const element = document.getElementById(id);
+        if (element) {
+            restrictToText(element);
+        }
+    });
+
+    // Additional validation for the dob field during form submission
+    const form = document.getElementById('bank-form');
+    if (form) {
+        form.addEventListener('submit', function(e) {
+            const dobElement = document.getElementById('dob');
+            if (dobElement) {
+                const dobValue = dobElement.value;
+                const dobRegex = /^\d{2}-\d{2}-\d{4}$/; // Regex for DD-MM-YYYY format
+                if (!dobRegex.test(dobValue)) {
+                    showToast('Invalid date format. Please use DD-MM-YYYY', 'error');
+                    e.preventDefault();
+                }
+            }
+        });
+    }
 });

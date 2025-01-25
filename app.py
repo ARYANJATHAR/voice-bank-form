@@ -116,7 +116,7 @@ def transform_payload(data):
     """
     key_mapping = {
         "firstName": "firstname",
-        "middleName": "middlename",  # Ensure middlename is included
+        "middleName": "middlename",    # Optional field
         "lastName": "lastname",
         "dob": "dob",
         "gender": "gender",
@@ -137,9 +137,9 @@ def transform_payload(data):
         "initialDeposit": "initialdeposit",
         "accountPurpose": "accountpurpose",
         "modeOfOperation": "modeofoperation",
-        "nomineeName": "nomineename",
-        "nomineeRelationship": "nomineerelationship",
-        "nomineeContact": "nomineecontact",
+        "nomineeName": "nomineename",                  # Optional field
+        "nomineeRelationship": "nomineerelationship",  # Optional field
+        "nomineeContact": "nomineecontact",            # Optional field
     }
 
     transformed_data = {}
@@ -148,9 +148,18 @@ def transform_payload(data):
         transformed_key = key_mapping.get(key, key)
         transformed_data[transformed_key] = value
 
-    # Ensure middlename is included in the payload
+    # Ensure optional fields are included with default values if missing
     if "middlename" not in transformed_data:
-        transformed_data["middlename"] = ""  # Set a default value if missing
+        transformed_data["middlename"] = None  # Set to NULL if not provided
+
+    if "nomineename" not in transformed_data:
+        transformed_data["nomineename"] = None  # Set to NULL if not provided
+
+    if "nomineerelationship" not in transformed_data:
+        transformed_data["nomineerelationship"] = None  # Set to NULL if not provided
+
+    if "nomineecontact" not in transformed_data:
+        transformed_data["nomineecontact"] = None  # Set to NULL if not provided
 
     return transformed_data
 
