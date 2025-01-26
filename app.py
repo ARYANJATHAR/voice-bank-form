@@ -22,7 +22,7 @@ load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '.env'))
 app = Flask(__name__)
 app.secret_key = os.getenv('SECRET_KEY')
 app.config['SESSION_TYPE'] = 'filesystem'
-app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=1)  # Reduced session lifetime
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=15)  # Session expires after 15 minutes  # Reduced session lifetime
 app.config['SESSION_COOKIE_SECURE'] = True  # Only send cookies over HTTPS
 app.config['SESSION_COOKIE_HTTPONLY'] = True  # Prevent client-side script access
 Session(app)
@@ -113,6 +113,7 @@ def validate_email(email):
 def transform_payload(data):
     """
     Transform camelCase keys to lowercase to match Supabase column names.
+    Handle optional fields (middleName, nomineeName, nomineeRelationship, nomineeContact).
     """
     key_mapping = {
         "firstName": "firstname",
@@ -149,16 +150,16 @@ def transform_payload(data):
         transformed_data[transformed_key] = value
 
     # Ensure optional fields are included with default values if missing
-    if "middlename" not in transformed_data:
+    if "middlename" not in transformed_data or not transformed_data["middlename"]:
         transformed_data["middlename"] = None  # Set to NULL if not provided
 
-    if "nomineename" not in transformed_data:
+    if "nomineename" not in transformed_data or not transformed_data["nomineename"]:
         transformed_data["nomineename"] = None  # Set to NULL if not provided
 
-    if "nomineerelationship" not in transformed_data:
+    if "nomineerelationship" not in transformed_data or not transformed_data["nomineerelationship"]:
         transformed_data["nomineerelationship"] = None  # Set to NULL if not provided
 
-    if "nomineecontact" not in transformed_data:
+    if "nomineecontact" not in transformed_data or not transformed_data["nomineecontact"]:
         transformed_data["nomineecontact"] = None  # Set to NULL if not provided
 
     return transformed_data
@@ -166,6 +167,7 @@ def transform_payload(data):
 def generate_pdf(form_data):
     """
     Generate a PDF that looks like the online form, with boxes and filled-in data.
+    Replace empty or None values with "NOT PROVIDED" for optional fields.
     """
     # Create a buffer to hold the PDF
     pdf_buffer = io.BytesIO()
@@ -182,20 +184,25 @@ def generate_pdf(form_data):
     content.append(title)
     content.append(Spacer(1, 12))  # Add some space
 
+    # Replace None or empty values with "NOT PROVIDED"
+    for key, value in form_data.items():
+        if value is None or value == "":
+            form_data[key] = "NOT PROVIDED"
+
     # Section 1: Personal Information
     personal_info = [
         ["Personal Information", ""],
-        ["First Name:", form_data.get('firstname', '')],
-        ["Middle Name:", form_data.get('middlename', '')],
-        ["Last Name:", form_data.get('lastname', '')],
-        ["Date of Birth:", form_data.get('dob', '')],
-        ["Gender:", form_data.get('gender', '')],
-        ["Marital Status:", form_data.get('maritalstatus', '')],
-        ["Nationality:", form_data.get('nationality', '')],
-        ["Mother's Maiden Name:", form_data.get('mothersmaidenname', '')],
-        ["Residential Address:", f"{form_data.get('residentialstreet', '')}, {form_data.get('residentialcity', '')}, {form_data.get('residentialstate', '')} - {form_data.get('residentialzip', '')}"],
-        ["Mobile Phone:", form_data.get('mobilephone', '')],
-        ["Email Address:", form_data.get('email', '')],
+        ["First Name:", form_data.get('firstname', 'NOT PROVIDED')],
+        ["Middle Name:", form_data.get('middlename', 'NOT PROVIDED')],  # Optional field
+        ["Last Name:", form_data.get('lastname', 'NOT PROVIDED')],
+        ["Date of Birth:", form_data.get('dob', 'NOT PROVIDED')],
+        ["Gender:", form_data.get('gender', 'NOT PROVIDED')],
+        ["Marital Status:", form_data.get('maritalstatus', 'NOT PROVIDED')],
+        ["Nationality:", form_data.get('nationality', 'NOT PROVIDED')],
+        ["Mother's Maiden Name:", form_data.get('mothersmaidenname', 'NOT PROVIDED')],
+        ["Residential Address:", f"{form_data.get('residentialstreet', 'NOT PROVIDED')}, {form_data.get('residentialcity', 'NOT PROVIDED')}, {form_data.get('residentialstate', 'NOT PROVIDED')} - {form_data.get('residentialzip', 'NOT PROVIDED')}"],
+        ["Mobile Phone:", form_data.get('mobilephone', 'NOT PROVIDED')],
+        ["Email Address:", form_data.get('email', 'NOT PROVIDED')],
     ]
 
     # Create a table for personal information
@@ -216,11 +223,11 @@ def generate_pdf(form_data):
 
     # Section 2: Employment and Income Information
     employment_info = [
-        ["Employment and Income Information", ""],
-        ["Employment Status:", form_data.get('employmentstatus', '')],
-        ["Occupation:", form_data.get('occupation', '')],
-        ["Monthly Income:", f"₹{form_data.get('monthlyincome', '')}"],
-        ["Source of Income:", form_data.get('incomesource', '')]
+        ["Employment & Income Info", ""],
+        ["Employment Status:", form_data.get('employmentstatus', 'NOT PROVIDED')],
+        ["Occupation:", form_data.get('occupation', 'NOT PROVIDED')],
+        ["Monthly Income:", f"{form_data.get('monthlyincome', 'NOT PROVIDED')}"],
+        ["Source of Income:", form_data.get('incomesource', 'NOT PROVIDED')]
     ]
 
     # Create a table for employment information
@@ -244,10 +251,10 @@ def generate_pdf(form_data):
     # Section 3: Account Details
     account_info = [
         ["Account Details", ""],
-        ["Account Type:", form_data.get('accounttype', '')],
-        ["Initial Deposit Amount:", f"₹{form_data.get('initialdeposit', '')}"],
-        ["Account Purpose:", form_data.get('accountpurpose', '')],
-        ["Mode of Operation:", form_data.get('modeofoperation', '')],
+        ["Account Type:", form_data.get('accounttype', 'NOT PROVIDED')],
+        ["Initial Deposit Amount:", f"{form_data.get('initialdeposit', 'NOT PROVIDED')}"],
+        ["Account Purpose:", form_data.get('accountpurpose', 'NOT PROVIDED')],
+        ["Mode of Operation:", form_data.get('modeofoperation', 'NOT PROVIDED')],
     ]
 
     # Create a table for account details
@@ -269,9 +276,9 @@ def generate_pdf(form_data):
     # Section 4: Nominee Information
     nominee_info = [
         ["Nominee Information", ""],
-        ["Nominee Name:", form_data.get('nomineename', '')],
-        ["Nominee Relationship:", form_data.get('nomineerelationship', '')],
-        ["Nominee Contact:", form_data.get('nomineecontact', '')],
+        ["Nominee Name:", form_data.get('nomineename', 'NOT PROVIDED')],  # Optional field
+        ["Nominee Relationship:", form_data.get('nomineerelationship', 'NOT PROVIDED')],  # Optional field
+        ["Nominee Contact:", form_data.get('nomineecontact', 'NOT PROVIDED')],  # Optional field
     ]
 
     # Create a table for nominee information
@@ -613,9 +620,8 @@ def bank_form():
 @app.route('/sign-out', methods=['POST'])
 def sign_out():
     logging.info("Sign out endpoint hit!")
-    session.pop('email', None)
-    session.pop('username', None)
-    logging.info("Email and username removed from session")
+    session.clear()  # Clear the entire session
+    logging.info("Session cleared")
     return jsonify(message='Logged out successfully', isAuthenticated=False)
 
 @app.route('/submit-bank-form', methods=['POST'])

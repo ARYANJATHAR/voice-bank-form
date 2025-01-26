@@ -48,7 +48,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const formSchema = {
         firstName: { required: true, minLength: 2, maxLength: 255 },
-        middleName: { required: true, minLength: 2, maxLength: 255 }, // Middle name is required
+        middleName: { required: false, minLength: 2, maxLength: 255 }, // Middle name is required
         lastName: { required: true, minLength: 2, maxLength: 255 },
         dob: { required: true },
         gender: { required: true, maxLength: 255 },
@@ -69,14 +69,22 @@ document.addEventListener('DOMContentLoaded', () => {
         initialDeposit: { required: true, min: 0 },
         accountPurpose: { required: true, maxLength: 255 },
         modeOfOperation: { required: true, maxLength: 255 },
-          nomineeName: { required: true, maxLength: 255 }, // Nominee fields are required
-        nomineeRelationship: { required: true, maxLength: 255 },
-        nomineeContact: { required: true, maxLength: 255 },
+        nomineeName: { required: false, maxLength: 255 }, // Nominee fields are required
+        nomineeRelationship: { required: false, maxLength: 255 },
+        nomineeContact: { required: false, regex: /^\d{10}$/, message: 'Nominee contact must be exactly 10 digits. Please try again.' },
     };
-
+    
+    
     function validateField(fieldName, fieldValue, fieldSchema) {
         const element = document.getElementById(fieldName);
         const errorElement = element?.closest('.form-item')?.querySelector('.form-message');
+    
+    // Skip validation for optional fields if they are empty
+    if (!fieldSchema.required && !fieldValue) {
+        errorElement.textContent = ''; // Clear any previous error message
+        return true; // Skip validation for optional fields
+    }
+    
 
         if (fieldSchema.required && !fieldValue) {
             errorElement.textContent = `${fieldName} is required.`;
@@ -127,24 +135,25 @@ document.addEventListener('DOMContentLoaded', () => {
     function clearForm() {
         form.reset();
     }
-   
-    function clearInput(inputId) {
-            const input = document.getElementById(inputId);
-            if (input) {
-                if(input.type === "checkbox" || input.type === "radio") {
-                    input.checked = false;
-                  }else{
-                      input.value = '';
-                  }
-                  const voiceStatusText = document.getElementById(`voiceStatusText${inputId.charAt(0).toUpperCase() + inputId.slice(1)}`);
-                      if (voiceStatusText) {
-                          voiceStatusText.textContent = '';
-                        }
-                  const errorElement = input?.closest('.form-item')?.querySelector('.form-message');
-                 if(errorElement)
-                     errorElement.textContent ='';
 
+    function clearInput(inputId) {
+        const input = document.getElementById(inputId);
+        if (input) {
+            if (input.type === "checkbox" || input.type === "radio") {
+                input.checked = false;
+            } else {
+                input.value = '';
             }
+            
+            const voiceStatusText = document.getElementById(`voiceStatusText${inputId.charAt(0).toUpperCase() + inputId.slice(1)}`);
+            if (voiceStatusText) {
+                voiceStatusText.textContent = '';
+            }
+            const errorElement = input?.closest('.form-item')?.querySelector('.form-message');
+            if (errorElement)
+                errorElement.textContent = '';
+
+        }
     }
     // Capitalize the first letter of each word
     function capitalizeWords(text) {
@@ -166,16 +175,15 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         return email.toLowerCase();
     }
-     // Function to update voice status messages
+    // Function to update voice status messages
     function updateVoiceStatus(elementId, message) {
-            const statusTextElement = document.getElementById(`voiceStatusText${elementId.charAt(0).toUpperCase() + elementId.slice(1)}`);
-            if (statusTextElement) {
-                 statusTextElement.textContent = message;
-            statusTextElement.className = `voice-status-text ${message.toLowerCase().includes("listening") ? "listening" : message.toLowerCase().includes("mic stopped") ? "mic-stopped":  message.toLowerCase().includes("error") ? "error" : ""}`;
-             }
+        const statusTextElement = document.getElementById(`voiceStatusText${elementId.charAt(0).toUpperCase() + elementId.slice(1)}`);
+        if (statusTextElement) {
+            statusTextElement.textContent = message;
+            statusTextElement.className = `voice-status-text ${message.toLowerCase().includes("listening") ? "listening" : message.toLowerCase().includes("mic stopped") ? "mic-stopped" : message.toLowerCase().includes("error") ? "error" : ""}`;
+        }
     }
-    
-    // Function to convert spoken words to numbers
+
     function convertWordsToNumber(transcript) {
         const numberWords = {
             zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9,
@@ -184,47 +192,61 @@ document.addEventListener('DOMContentLoaded', () => {
             sixty: 60, seventy: 70, eighty: 80, ninety: 90, hundred: 100, thousand: 1000, lakh: 100000,
             crore: 10000000,
         };
-
+    
         const similarWordsMap = {
             'handred': 'hundred', 'thousend': 'thousand', 'thousant': 'thousand',
             'lac': 'lakh', 'lack': 'lakh', 'laks': 'lakh', 'cror': 'crore', 'cr': 'crore',
         };
-
+    
+        // Replace similar words with correct ones
         for (const [similarWord, correctWord] of Object.entries(similarWordsMap)) {
             transcript = transcript.replace(new RegExp(similarWord, 'gi'), correctWord);
         }
-
+    
         const words = transcript.toLowerCase().split(' ');
         let total = 0;
-        let currentNumber = 0;
-
-        for (const word of words) {
+        let currentGroupValue = 0;
+    
+        for (let i = 0; i < words.length; i++) {
+            const word = words[i];
+    
             if (numberWords[word] !== undefined) {
-                if (word === 'hundred' || word === 'thousand' || word === 'lakh' || word === 'crore') {
-                    currentNumber *= numberWords[word];
+                const value = numberWords[word];
+    
+                if (word === 'hundred') {
+                    currentGroupValue *= value;
+                } else if (word === 'thousand' || word === 'lakh' || word === 'crore') {
+                    // Handle cases like "1 lakh", "2 crore", etc.
+                    if (currentGroupValue === 0) {
+                        currentGroupValue = 1; // Default to 1 if no number precedes the multiplier
+                    }
+                    currentGroupValue *= value;
+                    total += currentGroupValue;
+                    currentGroupValue = 0; // Reset for the next group
                 } else {
-                    currentNumber += numberWords[word];
+                    currentGroupValue += value; // Add to the current group
                 }
             } else if (word === 'and') {
-                continue;
+                continue; // Skip "and" in phrases like "one hundred and twenty"
             } else if (!isNaN(word)) {
-                currentNumber += parseFloat(word.replace(/,/g, ''));
+                currentGroupValue += parseFloat(word.replace(/,/g, '')); // Handle numeric digits
             }
         }
-
-        total += currentNumber;
+    
+        total += currentGroupValue; // Add any remaining value in the current group
         return total;
     }
+    
 
     // Voice input functionality
     function handleVoiceInput(inputField, micIcon) {
-         if (isListening) {
-           if (recognition) {
+        if (isListening) {
+            if (recognition) {
                 recognition.stop();
-             }
+            }
             updateVoiceStatus(inputField.id, "Mic stopped");
             isListening = false;
-          return;
+            return;
         }
         if (recognition) {
             micIcon.classList.add('active');
@@ -238,7 +260,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 if (inputField.id === 'gender' && transcript.includes('mail')) {
                     transcript = transcript.replace(/mail/gi, 'Male');
-                }
+               }
 
                 if (inputField.id === 'residentialStreet') {
                     const commaVariations = ['comma', 'coma', 'comah'];
@@ -255,93 +277,100 @@ document.addEventListener('DOMContentLoaded', () => {
                         inputField.value = numericValue;
                     } else {
                         showToast('Invalid number format. Please try again.', 'error');
-                         updateVoiceStatus(inputField.id, "Error: Mic stopped");
+                        updateVoiceStatus(inputField.id, "Error: Mic stopped");
                     }
                 }
                 if (inputField.id === 'dob') {
                     const datePatterns = [
-                         /(\d{1,2})[\/\-\s](\d{1,2})[\/\-\s](\d{4})/,
-                        /(\d{4})[\/\-\s](\d{1,2})[\/\-\s](\d{1,2})/,
-                        /(\d{1,2})\s+(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{4})/i,
-                       /(\d{1,2})\s+(\d{1,2})\s+(\d{4})/
-                     ];
-    
+                        /(\d{1,2})[\/\-\s](\d{1,2})[\/\-\s](\d{4})/, // DD-MM-YYYY or DD/MM/YYYY
+                        /(\d{4})[\/\-\s](\d{1,2})[\/\-\s](\d{1,2})/, // YYYY-MM-DD or YYYY/MM/DD
+                        /(\d{1,2})\s+(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{4})/i, // DD Month YYYY
+                        /(\d{1,2})\s+(\d{1,2})\s+(\d{4})/ // DD MM YYYY
+                    ];
+                
                     for (const pattern of datePatterns) {
                         const match = transcript.match(pattern);
                         if (match) {
                             let year, month, day;
-    
+                
                             if (pattern === datePatterns[0]) {
+                                // DD-MM-YYYY or DD/MM/YYYY
                                 day = match[1].padStart(2, '0');
                                 month = match[2].padStart(2, '0');
                                 year = match[3];
                             } else if (pattern === datePatterns[1]) {
+                                // YYYY-MM-DD or YYYY/MM/DD
                                 year = match[1];
                                 month = match[2].padStart(2, '0');
                                 day = match[3].padStart(2, '0');
                             } else if (pattern === datePatterns[2]) {
+                                // DD Month YYYY
                                 day = match[1].padStart(2, '0');
                                 month = String(new Date(`${match[2]} 1, 2000`).getMonth() + 1).padStart(2, '0');
                                 year = match[3];
                             } else if (pattern === datePatterns[3]) {
+                                // DD MM YYYY
                                 day = match[1].padStart(2, '0');
                                 month = match[2].padStart(2, '0');
                                 year = match[3];
                             }
-                             formattedDate = `${year}-${month}-${day}`;
-                                break;
+                
+                            // Format the date as DD-MM-YYYY
+                            formattedDate = `${day}-${month}-${year}`;
+                            break;
                         }
                     }
-    
-                     if (formattedDate) {
+                
+                    if (formattedDate) {
                         inputField.value = formattedDate;
                     } else {
-                       showToast('Invalid date format. Please try again.', 'error');
-                          updateVoiceStatus(inputField.id, "Error: Mic stopped");
-                       }
-               }
-              else if (inputField.id === 'mobilePhone' || inputField.id === 'residentialZip') {
-                    const digitsOnly = transcript.replace(/\D/g, '');
-                    if (inputField.id === 'mobilePhone' && digitsOnly.length !== 10) {
+                        showToast('Invalid date format. Please try again.', 'error');
+                        updateVoiceStatus(inputField.id, "Error: Mic stopped");
+                    }
+                }
+                else if (inputField.id === 'mobilePhone' || inputField.id === 'residentialZip' || inputField.id === 'nomineeContact') {
+                    let digitsOnly = transcript.replace(/\D/g, '');
+                    if ((inputField.id === 'mobilePhone' || inputField.id === 'nomineeContact') && digitsOnly.length !== 10) {
                         showToast('Phone number must be exactly 10 digits. Please try again.', 'error');
                         updateVoiceStatus(inputField.id, "Error: Mic stopped");
                         return;
                     }
-                     if (inputField.id === 'residentialZip' && digitsOnly.length !== 6) {
+                    if (inputField.id === 'residentialZip' && digitsOnly.length !== 6) {
                         showToast('ZIP code must be exactly 6 digits. Please try again.', 'error');
-                         updateVoiceStatus(inputField.id, "Error: Mic stopped");
+                        updateVoiceStatus(inputField.id, "Error: Mic stopped");
                         return;
                     }
-                        inputField.value = digitsOnly;
-                    }
+                    inputField.value = digitsOnly;
+                }
                 else if (inputField.id === 'email') {
                     const formattedEmail = formatEmail(transcript);
                     if (formattedEmail) {
                         inputField.value = formattedEmail;
                     } else {
                         showToast('Invalid email format. Please try again.', 'error');
-                          updateVoiceStatus(inputField.id, "Error: Mic stopped");
+                        updateVoiceStatus(inputField.id, "Error: Mic stopped");
                     }
                 } else {
                     inputField.value = capitalizeWords(transcript);
                 }
-                 micIcon.classList.remove('active');
-                   updateVoiceStatus(inputField.id, "");
-                   isListening = false;
-                 recognition.stop();
-            };
-            
-            recognition.onerror = (event) => {
-                 console.error('Voice recognition error:', event.error);
                 micIcon.classList.remove('active');
-                  updateVoiceStatus(inputField.id, "Error: Mic stopped");
+                updateVoiceStatus(inputField.id, "");
                 isListening = false;
                 recognition.stop();
             };
-            
+
+            recognition.onerror = (event) => {
+                console.error('Voice recognition error:', event.error);
+                micIcon.classList.remove('active');
+                showToast('Voice input failed. Please try again.', 'error');
+                updateVoiceStatus(inputField.id, "Error: Mic stopped");
+                isListening = false;
+                recognition.stop();
+            };
+
             recognition.onend = () => {
-               micIcon.classList.remove('active');
-               isListening = false;
+                micIcon.classList.remove('active');
+                isListening = false;
             };
         }
     }
@@ -350,35 +379,35 @@ document.addEventListener('DOMContentLoaded', () => {
     micIcons.forEach((micIcon) => {
         micIcon.addEventListener('click', () => {
             const inputField = micIcon.parentElement.querySelector('.form-control');
-             handleVoiceInput(inputField, micIcon);
+            handleVoiceInput(inputField, micIcon);
         });
     });
-     const clearInputButtons = document.querySelectorAll('.clear-input');
-        clearInputButtons.forEach(button => {
+    const clearInputButtons = document.querySelectorAll('.clear-input');
+    clearInputButtons.forEach(button => {
         button.addEventListener('click', () => {
-        const inputId = button.getAttribute('data-input');
-                clearInput(inputId);
+            const inputId = button.getAttribute('data-input');
+            clearInput(inputId);
         });
     });
 
     form.addEventListener('submit', async (e) => {
         e.preventDefault();
-          const loader = document.querySelector('.loader');
-    const loaderOverlay = document.querySelector('.loader-overlay');
-       if(loader) loader.style.display = 'block';
-     if(loaderOverlay) loaderOverlay.style.display = 'block';
+        const loader = document.querySelector('.loader');
+        const loaderOverlay = document.querySelector('.loader-overlay');
+        if (loader) loader.style.display = 'block';
+        if (loaderOverlay) loaderOverlay.style.display = 'block';
         if (isSubmitting) return;
         isSubmitting = true;
         submitButton.textContent = 'Submitting...';
-    
+
         if (!validateForm()) {
             submitButton.textContent = 'Submit Application';
-             if(loader) loader.style.display = 'none';
-            if(loaderOverlay) loaderOverlay.style.display = 'none';
+            if (loader) loader.style.display = 'none';
+            if (loaderOverlay) loaderOverlay.style.display = 'none';
             isSubmitting = false;
             return;
         }
-    
+
         const formValues = {};
         for (const fieldName in formSchema) {
             formValues[fieldName] = document.getElementById(fieldName)?.value;
@@ -386,28 +415,28 @@ document.addEventListener('DOMContentLoaded', () => {
                 formValues[fieldName] = formValues[fieldName].trim();
             }
         }
-    
+
         // Log the form data being sent
         console.log("Form Data Being Sent:", formValues);
-    
+
         if (formValues.monthlyIncome) {
             formValues.monthlyIncome = parseFloat(formValues.monthlyIncome);
         }
         if (formValues.initialDeposit) {
             formValues.initialDeposit = parseFloat(formValues.initialDeposit);
         }
-    
+
         try {
             const authResponse = await fetch('/check-auth');
             const authData = await authResponse.json();
-    
+
             if (!authResponse.ok || !authData.isAuthenticated) {
-                 if(loader) loader.style.display = 'none';
-            if(loaderOverlay) loaderOverlay.style.display = 'none';
+                if (loader) loader.style.display = 'none';
+                if (loaderOverlay) loaderOverlay.style.display = 'none';
                 window.location.href = '/auth/auth_form.html';
                 return;
             }
-    
+
             const submitResponse = await fetch('/submit-bank-form', {
                 method: 'POST',
                 headers: {
@@ -415,10 +444,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 },
                 body: JSON.stringify(formValues),
             });
-    
+
             if (submitResponse.ok) {
                 showToast(`Your application has been submitted successfully.`, 'success');
-                 clearForm();
+                clearForm();
             } else {
                 showToast('Form submission failed. Please try again.', 'error');
             }
@@ -428,11 +457,11 @@ document.addEventListener('DOMContentLoaded', () => {
         } finally {
             submitButton.textContent = 'Submit Application';
             isSubmitting = false;
-             if(loader) loader.style.display = 'none';
-            if(loaderOverlay) loaderOverlay.style.display = 'none';
+            if (loader) loader.style.display = 'none';
+            if (loaderOverlay) loaderOverlay.style.display = 'none';
         }
     });
-    
+
     async function checkAuth() {
         try {
             const response = await fetch('/check-auth');
@@ -449,7 +478,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
-           navigator.serviceWorker.register('/static/service-worker.js')
+            navigator.serviceWorker.register('/static/service-worker.js')
                 .then(registration => {
                     console.log('Service worker registered:', registration);
                 })
@@ -457,7 +486,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     console.log('Service worker registration failed:', registrationError);
                 });
         });
-   }
+    }
 
     signOutButton.addEventListener('click', async () => {
         try {
@@ -475,6 +504,52 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     checkAuth();
+
+
+        function restrictInput(inputElement, type = 'text') {
+            inputElement.addEventListener('input', function (event) {
+              let value = event.target.value;
+              if (type === 'number') {
+                  value = value.replace(/\D/g, '');
+                if (inputElement.id === 'mobilePhone' || inputElement.id === 'nomineeContact') {
+                  if (value.length > 10)
+                      value = value.slice(0, 10);
+                  } else if( inputElement.id === 'residentialZip' ){
+                    if (value.length > 6)
+                      value = value.slice(0, 6);
+                   }
+                  event.target.value = value;
+              } else if(type === 'text'){
+                value = value.replace(/[^A-Za-z\s]/g, '');
+                event.target.value = value;
+              }
+            });
+        }
+
+          // Apply for number fields:
+           const numberFields = ['mobilePhone', 'residentialZip','nomineeContact'];
+           numberFields.forEach(id => {
+             const element = document.getElementById(id);
+             if (element) {
+                 restrictInput(element, 'number');
+             }
+           });
+
+
+            // Apply text-only restrictions:
+           const textOnlyFields = [
+            'firstName', 'middleName', 'lastName', 'gender', 'maritalStatus', 'nationality',
+           'mothersMaidenName', 'residentialCity', 'residentialState', 'employmentStatus',
+           'occupation', 'incomeSource', 'accountType', 'accountPurpose',
+           'modeOfOperation', 'nomineeName', 'nomineeRelationship'
+         ];
+
+          textOnlyFields.forEach(id => {
+             const element = document.getElementById(id);
+             if (element) {
+                restrictInput(element, 'text');
+             }
+         });
 });
 
 // Additional functionality from bank_script.js
@@ -482,7 +557,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Additional date formatting and validation for the dob field
     const dobInput = document.getElementById('dob');
     if (dobInput) {
-        dobInput.addEventListener('input', function(event) {
+        dobInput.addEventListener('input', function (event) {
             const value = event.target.value;
             const regex = /^(\d{0,2})(-(\d{0,2})(-(\d{0,4}))?)?$/; // Regex for DD-MM-YYYY
             if (!regex.test(value)) {
@@ -497,60 +572,11 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // Additional input restrictions for mobilePhone and residentialZip
-    const mobilePhoneInput = document.getElementById('mobilePhone');
-    if (mobilePhoneInput) {
-        mobilePhoneInput.addEventListener('input', function(event) {
-            const value = event.target.value;
-            const digitsOnly = value.replace(/\D/g, '');
-            if (digitsOnly.length > 10) {
-                event.target.value = digitsOnly.slice(0, 10);
-            } else {
-                event.target.value = digitsOnly;
-            }
-        });
-    }
-
-    const residentialZipInput = document.getElementById('residentialZip');
-    if (residentialZipInput) {
-        residentialZipInput.addEventListener('input', function(event) {
-            const value = event.target.value;
-            const digitsOnly = value.replace(/\D/g, '');
-            if (digitsOnly.length > 6) {
-                event.target.value = digitsOnly.slice(0, 6);
-            } else {
-                event.target.value = digitsOnly;
-            }
-        });
-    }
-
-    // Text-only input restrictions for specified fields
-    function restrictToText(inputElement) {
-        inputElement.addEventListener('input', function(event) {
-            const value = event.target.value;
-            const textOnly = value.replace(/[^A-Za-z\s]/g, '');
-            event.target.value = textOnly;
-        });
-    }
-
-    const textOnlyFields = [
-        'firstName', 'middleName', 'lastName', 'gender', 'maritalStatus', 'nationality',
-        'mothersMaidenName', 'residentialCity', 'residentialState', 'employmentStatus',
-        'occupation', 'incomeSource', 'accountType', 'accountPurpose',
-        'modeOfOperation', 'nomineeName', 'nomineeRelationship'
-    ];
-
-    textOnlyFields.forEach(id => {
-        const element = document.getElementById(id);
-        if (element) {
-            restrictToText(element);
-        }
-    });
 
     // Additional validation for the dob field during form submission
     const form = document.getElementById('bank-form');
     if (form) {
-        form.addEventListener('submit', function(e) {
+        form.addEventListener('submit', function (e) {
             const dobElement = document.getElementById('dob');
             if (dobElement) {
                 const dobValue = dobElement.value;

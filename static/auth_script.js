@@ -141,6 +141,12 @@ document.getElementById('resetPasswordForm')?.addEventListener('submit', async (
     const confirmPassword = document.getElementById('confirmPassword').value;
     const resetToken = document.getElementById('resetToken').value;
 
+    
+if (!resetToken) {
+        showNotification("Token not found", 'error');
+        hideLoader();
+        return;
+    }
     if (newPassword !== confirmPassword) {
         displayErrorMessage('confirmPasswordError', 'Passwords do not match');
         hideLoader();
@@ -148,7 +154,7 @@ document.getElementById('resetPasswordForm')?.addEventListener('submit', async (
     }
 
     if (newPassword.length !== 6) {
-        showNotification("Password must be exactly 6 characters long.", 'error');
+       showNotification("Password must be exactly 6 characters long.", 'error');
         hideLoader();
         return;
     }
@@ -235,139 +241,138 @@ function startVoiceInput(inputId) {
                 inputId === 'username' ? 'usernameError' :
                     inputId === 'password' ? 'passwordError' :
                         inputId === 'signInPassword' ? 'signInPasswordError' :
-                            inputId === 'forgotPasswordEmail' ? 'forgotPasswordEmailError' : null;
+                            inputId === 'forgotPasswordEmail' ? 'forgotPasswordEmailError' :
+                                inputId === 'newPassword' ? 'newPasswordError' :
+                                    inputId === 'confirmPassword' ? 'confirmPasswordError' : null;
 
     if (errorId) {
         clearErrorMessage(errorId);
     }
 
+    // If already listening, stop the recognition
     if (isListening) {
         if (recognition) {
-            recognition.stop();
+            recognition.stop(); // Stop the recognition
+            recognition = null; // Reset the recognition object
+            isListening = false;
+            updateVoiceStatus(inputId, "Mic stopped");
         }
-        updateVoiceStatus(inputId, "Mic stopped");
-        isListening = false;
         return;
     }
 
+    // Initialize recognition if not already initialized
     recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
     recognition.lang = 'en-US';
     recognition.interimResults = false;
     recognition.maxAlternatives = 1;
 
-    recognition.onstart = () => {
-        isListening = true;
-        updateVoiceStatus(inputId, "Listening...");
-    };
+    // Request microphone access
+    navigator.mediaDevices.getUserMedia({ audio: true })
+        .then(() => {
+            recognition.onstart = () => {
+                isListening = true;
+                updateVoiceStatus(inputId, "Listening...");
+            };
 
-    recognition.onresult = (event) => {
-        const result = event.results[0][0].transcript;
-        console.log("Voice input result:", result);
+            recognition.onresult = async (event) => {
+                const result = event.results[0][0].transcript;
+                console.log("Voice input result:", result);
 
-        let validationResult;
-        let cleanedValue;
-
-        if (inputId === 'username') {
-            validationResult = validateUsername(result);
-            if (validationResult.valid) {
-                cleanedValue = validationResult.cleanedUsername;
-                const postValidation = validateUsername(cleanedValue);
-                if (!postValidation.valid) {
-                    displayErrorMessage(errorId, postValidation.message);
-                    updateVoiceStatus(inputId, "failed");
-                    return;
-                }
-            }
-        }
-        else if (inputId === 'email' || inputId === 'signInEmail' || inputId === 'forgotPasswordEmail') {
-            validationResult = formatEmailFromVoice(result);
-            if (validationResult.valid) {
-                cleanedValue = validationResult.formattedEmail;
-                if (!validateEmail(cleanedValue)) {
-                    displayErrorMessage(errorId, 'Please enter a valid email address');
-                    updateVoiceStatus(inputId, "failed");
-                    return;
-                }
-            }
-        }
-        else if (inputId === 'password' || inputId === 'signInPassword') {
-            const password = result;
-            cleanedValue = password.replace(/\s+/g, '');
-            validationResult = validatePassword(cleanedValue);
-            if (!validationResult.valid) {
-                displayErrorMessage(errorId, validationResult.message);
-                updateVoiceStatus(inputId, "failed");
-                return;
-            }
-            if (cleanedValue.length !== 6) {
-                displayErrorMessage(errorId, "Password must be exactly 6 characters long");
-                updateVoiceStatus(inputId, "failed");
-                return;
-            }
-        } else {
-            cleanedValue = result;
-        }
-
-        if (validationResult && !validationResult.valid) {
-            displayErrorMessage(errorId, validationResult.message);
-            updateVoiceStatus(inputId, "failed");
-        } else {
-            const inputField = document.getElementById(inputId);
-            if (inputField) {
-                inputField.value = cleanedValue;
-                const inputEvent = new Event('input', { bubbles: true });
-                const changeEvent = new Event('change', { bubbles: true });
-                inputField.dispatchEvent(inputEvent);
-                inputField.dispatchEvent(changeEvent);
+                let validationResult;
+                let cleanedValue;
 
                 if (inputId === 'username') {
-                    const { valid, message } = validateUsername(inputField.value);
-                    if (!valid) {
-                        displayErrorMessage(errorId, message);
+                    validationResult = validateUsername(result);
+                    if (validationResult.valid) {
+                        cleanedValue = validationResult.cleanedUsername;
+                    }
+                } else if (inputId === 'email' || inputId === 'signInEmail' || inputId === 'forgotPasswordEmail') {
+                    validationResult = formatEmailFromVoice(result);
+                    if (validationResult.valid) {
+                        cleanedValue = validationResult.formattedEmail;
+                        if (!validateEmail(cleanedValue)) {
+                            displayErrorMessage(errorId, 'Please enter a valid email address');
+                            updateVoiceStatus(inputId, "failed");
+                            return;
+                        }
+                    }
+                } else if (inputId === 'password' || inputId === 'signInPassword' || inputId === 'newPassword' || inputId === 'confirmPassword') {
+                    const password = result;
+                    cleanedValue = password.replace(/\s+/g, ''); // Remove spaces
+                    validationResult = validatePassword(cleanedValue);
+
+                    if (!validationResult.valid) {
+                        displayErrorMessage(errorId, validationResult.message);
                         updateVoiceStatus(inputId, "failed");
-                    } else {
-                        clearErrorMessage(errorId);
-                        updateVoiceStatus(inputId, "");
+                        return;
+                    }
+
+                    // Enforce 6-character limit for password fields
+                    if (cleanedValue.length !== 6) {
+                        displayErrorMessage(errorId, "Password must be exactly 6 characters long");
+                        updateVoiceStatus(inputId, "failed");
+                        return;
+                    }
+                } else {
+                    cleanedValue = result;
+                }
+
+                if (validationResult && !validationResult.valid) {
+                    displayErrorMessage(errorId, validationResult.message);
+                    updateVoiceStatus(inputId, "failed");
+                } else {
+                    const inputField = document.getElementById(inputId);
+                    if (inputField) {
+                        inputField.value = cleanedValue;
+                        const changeEvent = new Event('change', { bubbles: true });
+                        inputField.dispatchEvent(changeEvent);
+
+                        if (inputId === 'email' || inputId === 'signInEmail' || inputId === 'forgotPasswordEmail') {
+                            if (!validateEmail(inputField.value)) {
+                                displayErrorMessage(errorId, 'Please enter a valid email address');
+                                updateVoiceStatus(inputId, "failed");
+                            } else {
+                                clearErrorMessage(errorId);
+                                updateVoiceStatus(inputId, "");
+                            }
+                        } else if (inputId === 'password' || inputId === 'signInPassword' || inputId === 'newPassword' || inputId === 'confirmPassword') {
+                            const { valid, message } = validatePassword(inputField.value);
+                            if (!valid) {
+                                displayErrorMessage(errorId, message);
+                                updateVoiceStatus(inputId, "failed");
+                            } else {
+                                clearErrorMessage(errorId);
+                                updateVoiceStatus(inputId, "");
+                            }
+                        } else {
+                            updateVoiceStatus(inputId, "");
+                        }
                     }
                 }
-                else if (inputId === 'email' || inputId === 'signInEmail' || inputId === 'forgotPasswordEmail') {
-                    if (!validateEmail(inputField.value)) {
-                        displayErrorMessage(errorId, 'Please enter a valid email address');
-                        updateVoiceStatus(inputId, "failed");
-                    } else {
-                        clearErrorMessage(errorId);
-                        updateVoiceStatus(inputId, "");
-                    }
-                }
-                else if (inputId === 'password' || inputId === 'signInPassword') {
-                    const { valid, message } = validatePassword(inputField.value);
-                    if (!valid) {
-                        displayErrorMessage(errorId, message);
-                        updateVoiceStatus(inputId, "failed");
-                    } else {
-                        clearErrorMessage(errorId);
-                        updateVoiceStatus(inputId, "");
-                    }
-                }
-                else {
-                    updateVoiceStatus(inputId, "");
-                }
-            }
-        }
-        isListening = false;
-    };
+                isListening = false;
+            };
 
-    recognition.onerror = (event) => {
-        console.error('Voice recognition error:', event.error);
-        updateVoiceStatus(inputId, "Error: Mic stopped");
-        isListening = false;
-    };
+            recognition.onerror = (event) => {
+                console.error('Voice recognition error:', event.error);
+                let errorMessage = 'Error: Mic stopped';
+                if (event.error === 'not-allowed') {
+                    errorMessage = 'Microphone access denied';
+                }
+                updateVoiceStatus(inputId, errorMessage);
+                isListening = false;
+            };
 
-    recognition.onend = () => {
-        isListening = false;
-    };
+            recognition.onend = () => {
+                isListening = false;
+            };
 
-    recognition.start();
+            recognition.start(); // Start the recognition
+        })
+        .catch((error) => {
+            console.error('Microphone permission error:', error);
+            updateVoiceStatus(inputId, "Microphone access denied");
+            isListening = false;
+        });
 }
 
 function switchTheme(e) {
@@ -399,8 +404,49 @@ function clearInput(inputId, errorId) {
         if (voiceStatusText) {
             voiceStatusText.textContent = '';
         }
-        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.dispatchEvent(new Event('change', { bubbles: true }));
     }
+}
+function handlePasswordInput(inputElement, errorElementId) {
+    if (inputElement) {
+        const password = inputElement.value;
+        const cleanedPassword = password.replace(/\s+/g, '');
+        const { valid, message } = validatePassword(cleanedPassword);
+
+        if (!valid) {
+            displayErrorMessage(errorElementId, message);
+        } else {
+            clearErrorMessage(errorElementId);
+        }
+
+        if (password !== cleanedPassword) {
+            inputElement.value = cleanedPassword;
+        }
+    }
+}
+
+function handleEmailInput(inputElement, errorElementId) {
+    if (inputElement) {
+        const email = inputElement.value.toLowerCase();
+        const cleanedEmail = email.replace(/\s+/g, '');
+
+        if (!validateEmail(cleanedEmail)) {
+            const domain = cleanedEmail.split('@')[1];
+             let errorMessage = 'Please enter a valid email address';
+             if (domain && !/^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(domain)) {
+                 errorMessage = 'Invalid email format';
+             } else if (domain && !/[a-zA-Z]/.test(cleanedEmail)) {
+                 errorMessage = 'Email must contain at least one letter';
+             } else if (domain) {
+                errorMessage = 'Only gmail.com, yahoo.com, outlook.com, hotmail.com, aol.com, and icloud.com domains are allowed';
+             }
+             displayErrorMessage(errorElementId, errorMessage);
+        } else {
+            clearErrorMessage(errorElementId);
+        }
+
+         inputElement.value = cleanedEmail;
+      }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -454,31 +500,16 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
     });
-
-    const newPasswordInput = document.getElementById('newPassword');
+  const newPasswordInput = document.getElementById('newPassword');
     if (newPasswordInput) {
-        newPasswordInput.addEventListener('input', (e) => {
-            if (e.target) {
-                const password = e.target.value;
-                const cleanedPassword = password.replace(/\s+/g, '');
-                const { valid, message } = validatePassword(cleanedPassword);
-
-                if (!valid) {
-                    displayErrorMessage('newPasswordError', message);
-                } else {
-                    clearErrorMessage('newPasswordError');
-                }
-
-                if (password !== cleanedPassword) {
-                    e.target.value = cleanedPassword;
-                }
-            }
+        newPasswordInput.addEventListener('change', (e) => {
+           handlePasswordInput(e.target, 'newPasswordError');
         });
     }
 
     const confirmPasswordInput = document.getElementById('confirmPassword');
     if (confirmPasswordInput) {
-        confirmPasswordInput.addEventListener('input', (e) => {
+        confirmPasswordInput.addEventListener('change', (e) => {
             if (e.target) {
                 const confirmPassword = e.target.value;
                 const newPassword = document.getElementById('newPassword').value;
@@ -489,19 +520,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     clearErrorMessage('confirmPasswordError');
 
                 }
-                const password = e.target.value;
-                const cleanedPassword = password.replace(/\s+/g, '');
-                const { valid, message } = validatePassword(cleanedPassword);
-
-                if (!valid) {
-                    displayErrorMessage('confirmPasswordError', message);
-                } else {
-                    clearErrorMessage('confirmPasswordError');
-                }
-
-                if (password !== cleanedPassword) {
-                    e.target.value = cleanedPassword;
-                }
+                 handlePasswordInput(e.target, 'confirmPasswordError');
             }
         });
     }
@@ -549,9 +568,9 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('toggleSignUp')?.addEventListener('click', toggleFormDisplay);
     document.getElementById('toggleSignIn')?.addEventListener('click', toggleFormDisplay);
 
-    const usernameInput = document.getElementById('username');
+   const usernameInput = document.getElementById('username');
     if (usernameInput) {
-        usernameInput.addEventListener('input', (e) => {
+        usernameInput.addEventListener('change', (e) => {
             if (e.target) {
                 const { valid, message, cleanedUsername } = validateUsername(e.target.value);
 
@@ -566,100 +585,36 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    const passwordInput = document.getElementById('password');
+     const passwordInput = document.getElementById('password');
     if (passwordInput) {
-        passwordInput.addEventListener('input', (e) => {
-            if (e.target) {
-                const password = e.target.value;
-                const cleanedPassword = password.replace(/\s+/g, '');
-                const { valid, message } = validatePassword(cleanedPassword);
-
-                if (!valid) {
-                    displayErrorMessage('passwordError', message);
-                } else {
-                    clearErrorMessage('passwordError');
-                }
-
-                if (password !== cleanedPassword) {
-                    e.target.value = cleanedPassword;
-                }
-            }
+        passwordInput.addEventListener('change', (e) => {
+           handlePasswordInput(e.target, 'passwordError');
         });
     }
 
     const signInPasswordInput = document.getElementById('signInPassword');
     if (signInPasswordInput) {
-        signInPasswordInput.addEventListener('input', (e) => {
-            if (e.target) {
-                const password = e.target.value;
-                const cleanedPassword = password.replace(/\s+/g, '');
-                const { valid, message } = validatePassword(cleanedPassword);
-
-                if (!valid) {
-                    displayErrorMessage('signInPasswordError', message);
-                } else {
-                    clearErrorMessage('signInPasswordError');
-                }
-
-                if (password !== cleanedPassword) {
-                    e.target.value = cleanedPassword;
-                }
-            }
-        });
+       signInPasswordInput.addEventListener('change', (e) => {
+         handlePasswordInput(e.target, 'signInPasswordError');
+       });
     }
+
 
     const emailInput = document.getElementById('email');
     if (emailInput) {
-        emailInput.addEventListener('input', (e) => {
-            if (e.target) {
-                const email = e.target.value.toLowerCase();
-                const cleanedEmail = email.replace(/\s+/g, '');
-
-                if (!validateEmail(cleanedEmail)) {
-                    const domain = cleanedEmail.split('@')[1];
-                    let errorMessage = 'Please enter a valid email address';
-                    if (domain && !/^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(domain)) {
-                        errorMessage = 'Invalid email format';
-                    } else if (domain && !/[a-zA-Z]/.test(cleanedEmail)) {
-                        errorMessage = 'Email must contain at least one letter';
-                    } else if (domain) {
-                        errorMessage = 'Only gmail.com, yahoo.com, outlook.com, hotmail.com, aol.com, and icloud.com domains are allowed';
-                    }
-                    displayErrorMessage('emailError', errorMessage);
-                } else {
-                    clearErrorMessage('emailError');
-                }
-
-                e.target.value = cleanedEmail;
-            }
+        emailInput.addEventListener('change', (e) => {
+            handleEmailInput(e.target, 'emailError');
         });
     }
+
 
     const signInEmailInput = document.getElementById('signInEmail');
     if (signInEmailInput) {
-        signInEmailInput.addEventListener('input', (e) => {
-            if (e.target) {
-                const email = e.target.value.toLowerCase();
-                const cleanedEmail = email.replace(/\s+/g, '');
-
-                if (!validateEmail(cleanedEmail)) {
-                    const domain = cleanedEmail.split('@')[1];
-                    let errorMessage = 'Please enter a valid email address';
-                    if (domain && !/^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/.test(domain)) {
-                        errorMessage = 'Invalid email format';
-                    } else if (domain && !/[a-zA-Z]/.test(cleanedEmail)) {
-                        errorMessage = 'Email must contain at least one letter';
-                    } else if (domain) {
-                        errorMessage = 'Only gmail.com, yahoo.com, outlook.com, hotmail.com, aol.com, and icloud.com domains are allowed';
-                    }
-                    displayErrorMessage('signInEmailError', errorMessage);
-                } else {
-                    clearErrorMessage('signInEmailError');
-                }
-                e.target.value = cleanedEmail;
-            }
+       signInEmailInput.addEventListener('change', (e) => {
+           handleEmailInput(e.target, 'signInEmailError');
         });
     }
+
 
     document.getElementById('signInForm')?.addEventListener('submit', async (e) => {
         e.preventDefault();
