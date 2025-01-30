@@ -18,7 +18,7 @@ FORM/
 └── requirements.txt
 
 # Voice-Enabled Bank Form Application
-[![Watch the demo video](<https://drive.google.com/file/d/1SUTJHkhfNT-ucLxOVnBwaBixPPvD-GKr/view?usp=sharing>)
+[!Watch the demo video(<https://drive.google.com/file/d/1SUTJHkhfNT-ucLxOVnBwaBixPPvD-GKr/view?usp=sharing>)]
 
 This is a web application for a bank form that uses voice input and provides user authentication.
 
